@@ -1,0 +1,24 @@
+# Create a virtual environment named .data_venv
+python -m venv .venv
+
+# Activate the environment
+.data_venv\Scripts\activate.bat
+
+# Upgrade pip to the latest version
+python -m pip install --upgrade pip
+
+# Install pandas in our virtual environment
+pip install pandas
+
+# Install additional dependencies
+pip install scikit-learn matplotlib
+
+# Generate requirements.txt with exact package versions
+pip freeze > requirements.txt
+
+_________________________________________________________________________________________________________________________________________________________
+
+# (Alternative) create the environement with Conda
+conda create -n myproject python=3.11 -y
+conda activate myproject
+pip install -r requirements.txt
