@@ -1,5 +1,5 @@
 # Create a virtual environment named .data_venv
-python -m venv .venv
+python -m venv .data_venv
 
 # Activate the environment
 .data_venv\Scripts\activate.bat
