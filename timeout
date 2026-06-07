@@ -1,0 +1,393 @@
+## Main Idea
+
+**Always set a timeout.**
+
+Without a timeout:
+
+```python
+response = requests.post(url, json=payload)
+```
+
+Your program can hang forever.
+
+With a timeout:
+
+```python
+response = requests.post(
+    url,
+    json=payload,
+    timeout=30
+)
+```
+
+Your program fails in a controlled, debuggable way.
+
+---
+
+# Failure Types You Should Know
+
+Real systems fail regularly.
+
+### 1. Connect Failure
+
+Cannot reach the server.
+
+Examples:
+
+* DNS problems
+* Network outage
+* Provider down
+
+```python
+except requests.ConnectTimeout:
+```
+
+---
+
+### 2. Read Timeout
+
+Connected successfully but waiting too long for a response.
+
+Examples:
+
+* Slow model
+* Large prompt
+* Provider overloaded
+
+```python
+except requests.ReadTimeout:
+```
+
+---
+
+### 3. Application Error
+
+Server responded with an error.
+
+Examples:
+
+```text
+404 Not Found
+429 Too Many Requests
+500 Internal Server Error
+```
+
+```python
+response.raise_for_status()
+```
+
+---
+
+### 4. Malformed Response
+
+Server returned garbage.
+
+Examples:
+
+```python
+json.loads(response.text)
+```
+
+fails because response is not valid JSON.
+
+---
+
+# Most Important Rule
+
+Never do:
+
+```python
+requests.post(url, json=payload)
+```
+
+Always do:
+
+```python
+requests.post(
+    url,
+    json=payload,
+    timeout=30
+)
+```
+
+---
+
+# Connect vs Read Timeout
+
+You can separate them:
+
+```python
+response = requests.post(
+    url,
+    json=payload,
+    timeout=(5, 60)
+)
+```
+
+Meaning:
+
+```text
+Connect timeout = 5 seconds
+Read timeout    = 60 seconds
+```
+
+### Why?
+
+Connect failures should be detected quickly.
+
+```text
+DNS broken
+Network down
+Provider unreachable
+```
+
+Don't wait 60 seconds to discover that.
+
+---
+
+# Recommended Values
+
+| Use Case        | Connect | Read |
+| --------------- | ------- | ---- |
+| Embeddings      | 3s      | 10s  |
+| Chat            | 3s      | 15s  |
+| Standard LLM    | 5s      | 30s  |
+| Long Generation | 5s      | 90s  |
+
+---
+
+# Production Wrapper
+
+A common pattern:
+
+```python
+import requests
+
+def call_llm(prompt):
+    try:
+        response = requests.post(
+            url,
+            json={"prompt": prompt},
+            timeout=(5, 30)
+        )
+
+        response.raise_for_status()
+
+        return response.json()["text"]
+
+    except requests.Timeout:
+        raise TimeoutError("LLM timed out")
+
+    except requests.RequestException as e:
+        raise RuntimeError(f"Request failed: {e}")
+```
+
+---
+
+# For Ollama
+
+Instead of:
+
+```python
+response = requests.post(
+    "http://localhost:11434/api/generate",
+    json=payload
+)
+```
+
+Use:
+
+```python
+response = requests.post(
+    "http://localhost:11434/api/generate",
+    json=payload,
+    timeout=(5, 120)
+)
+```
+
+Example:
+
+```python
+def call_llm(prompt):
+    response = requests.post(
+        "http://localhost:11434/api/generate",
+        json={
+            "model": "llama3.1",
+            "prompt": prompt,
+            "stream": False
+        },
+        timeout=(5, 120)
+    )
+
+    response.raise_for_status()
+
+    return response.json()["response"]
+```
+
+---
+
+# How to Troubleshoot
+
+## Some Requests Timeout
+
+Symptoms:
+
+```text
+Sometimes works
+Sometimes times out
+```
+
+Possible causes:
+
+* Provider load
+* Network congestion
+* Large prompts
+
+Fix:
+
+* Add retries
+* Add backoff
+* Reduce prompt size
+
+---
+
+## All Requests Timeout
+
+Symptoms:
+
+```text
+Everything fails
+```
+
+Test:
+
+```python
+for timeout in [10, 30, 60, 120]:
+    try:
+        response = call_llm(prompt, timeout)
+        print("Success")
+        break
+    except TimeoutError:
+        print("Failed")
+```
+
+Possible causes:
+
+* Timeout too short
+* Provider down
+* Wrong endpoint
+
+---
+
+## Script Hangs Forever
+
+Symptoms:
+
+```text
+No output
+No error
+Never finishes
+```
+
+Cause:
+
+```python
+requests.post(...)
+```
+
+without:
+
+```python
+timeout=...
+```
+
+---
+
+# Logging (Important)
+
+Measure latency:
+
+```python
+import time
+
+t0 = time.time()
+
+response = requests.post(...)
+
+latency = time.time() - t0
+
+print(latency)
+```
+
+Useful logs:
+
+```python
+logger.info(
+    "llm_call",
+    extra={
+        "latency": latency,
+        "prompt_length": len(prompt)
+    }
+)
+```
+
+This helps identify:
+
+* slow prompts
+* overloaded providers
+* timeout tuning opportunities
+
+---
+
+# Interview / Exam Notes
+
+### Why use timeouts?
+
+To prevent indefinite hangs.
+
+### Difference between connect and read timeout?
+
+**Connect timeout**
+= How long to establish connection.
+
+**Read timeout**
+= How long to wait for server response.
+
+### What should you log?
+
+* latency
+* timeout value
+* prompt length
+* success/failure
+
+### Golden Rule
+
+```text
+Every network request should have a timeout.
+```
+
+---
+
+# What You Should Memorize
+
+```python
+try:
+    response = requests.post(
+        url,
+        json=payload,
+        timeout=(5, 30)
+    )
+
+    response.raise_for_status()
+
+except requests.ConnectTimeout:
+    print("Connection failed")
+
+except requests.ReadTimeout:
+    print("Server too slow")
+
+except requests.RequestException as e:
+    print(f"Request failed: {e}")
+```
+
+This pattern is the foundation of reliable API and LLM applications.
