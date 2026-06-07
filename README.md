@@ -20,4 +20,8 @@ $python structured_output_validation.py --input input.txt
 Option C — From a JSON file (IMPORTANT)
 $python structured_output_validation.py --input input.json --json
 
+Timeout reason
 
+Check the timeout reason
+
+$python timeout_check.py
