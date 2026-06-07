@@ -1,0 +1,56 @@
+A token is a unit the model processes.
+
+It is not exactly a word.
+It is not exactly a character.
+
+Token count is what drives cost (hosted APIs).
+Token count is what drives latency (often).
+
+A prompt is the input text or instructions you send to a Large Language Model (LLM). It acts as the API contract between your code and the AI.
+
+Typically, when using an LLM API (like OpenAI's), a prompt is broken down into structured roles:
+
+System: High-level instructions, persona, and rules (e.g., "You are a helpful Python expert. Always return JSON").
+User: The specific request, task, or data the user wants processed.
+
+Contract template
+
+A useful contract includes:
+
+Role: what the model is doing
+Task: what to produce
+Input format: what you will provide
+Output schema: exact JSON keys and types
+Constraints:
+no extra keys
+no markdown
+no commentary
+Refusal conditions: when to output an error object
+
+Example:
+
+You are an information extraction engine.
+
+Task:
+Extract a person and company name from the input.
+
+Output format:
+Return ONLY valid JSON with exactly these keys:
+{
+  "person": string | null,
+  "company": string | null
+}
+
+Constraints:
+- No markdown
+- No additional keys
+- Use null if not found
+
+Input:
+"<TEXT>"
+
+Why the contract is structured this way:
+
+“Return ONLY valid JSON” tries to eliminate ambiguous prose
+“exactly these keys” makes it possible to validate reliably
+“Use null if not found” prevents hallucinated values from looking like real facts
