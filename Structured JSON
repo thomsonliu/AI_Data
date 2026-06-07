@@ -1,0 +1,307 @@
+Treat model output as untrusted text until it passes:
+
+Parse → Is it valid JSON?
+Validate → Does it match the expected schema?
+Retry/Repair → If not, ask the model to fix it.
+Fail Fast → Stop after a limited number of retries.
+
+1. Define the Expected Schema
+
+Use Pydantic to create a contract.
+
+from typing import Optional
+from pydantic import BaseModel
+
+class Extracted(BaseModel):
+    person: Optional[str]
+    company: Optional[str]
+------------------------------------------------------
+Expected output:
+
+{
+  "person": "Ada Lovelace",
+  "company": null
+}
+------------------------------------------------------
+Benefits:
+
+Enforces field names
+Enforces data types
+Gives deterministic validation
+
+2. Parse the JSON
+
+Convert model text into Python data.
+
+import json
+
+data = json.loads(model_text)
+
+Possible failure:
+
+model_text = "Here is the JSON: {'person': 'Ada'}"
+
+Error:
+
+json.JSONDecodeError
+
+Reason:
+
+Extra text
+Single quotes
+Invalid JSON syntax
+
+3. Validate the Schema
+
+Once parsing succeeds:
+
+Extracted.model_validate(data)
+
+Example:
+
+data = {
+    "name": "Ada"
+}
+
+Error:
+
+ValidationError
+
+Reason:
+
+Wrong keys
+Wrong types
+Missing required fields
+
+4. Separate Parse Errors from Validation Errors
+
+Very important for debugging.
+
+import json
+from pydantic import ValidationError
+
+def parse_and_validate(model_text: str) -> Extracted:
+    data = json.loads(model_text)
+    return Extracted.model_validate(data)
+
+Two possible failures:
+
+Parse Failure
+"Here is the JSON: {...}"
+
+Error:
+
+JSONDecodeError
+
+Meaning:
+
+Prompt formatting issue.
+
+Schema Failure
+{
+    "name": "Ada"
+}
+
+Error:
+
+ValidationError
+
+Meaning:
+
+Model produced wrong structure.
+
+5. Retry / Repair Pattern
+
+A common production pattern.
+
+def extract_with_repair(
+    text: str,
+    call_llm,
+    max_retries: int = 2
+):
+    ...
+
+Workflow:
+
+Call LLM
+   ↓
+Parse JSON
+   ↓
+Validate Schema
+   ↓
+Success? ── Yes → Return result
+   │
+   No
+   ↓
+Send repair prompt
+   ↓
+Try again
+
+Repair Prompt Strategy
+
+Instead of asking again blindly:
+
+prompt = (
+    "Your previous output was invalid.\n"
+    "Fix it and return ONLY valid JSON.\n"
+)
+
+Include:
+
+Invalid output
+Error message
+
+Example:
+
+prompt = (
+    "Your previous output was invalid.\n"
+    "Fix it and return ONLY valid JSON.\n\n"
+    f"Invalid output:\n{raw}\n\n"
+    f"Error:\n{last_error}"
+)
+
+This gives the model:
+
+What it produced
+Why it failed
+What needs fixing
+
+6. Save Raw Failures
+
+Extremely useful for debugging.
+
+from pathlib import Path
+
+def save_failure(raw: str):
+    output_dir = Path("output")
+    output_dir.mkdir(exist_ok=True)
+
+    path = output_dir / "raw_failure.txt"
+    path.write_text(raw)
+
+    return path
+
+Usage:
+
+try:
+    result = parse_and_validate(raw)
+except Exception:
+    path = save_failure(raw)
+    print(f"Saved failure to {path}")
+
+Generated:
+
+output/
+└── raw_failure.txt
+
+7. Complete Example
+
+import json
+from pathlib import Path
+from typing import Optional
+
+from pydantic import BaseModel, ValidationError
+
+
+class Extracted(BaseModel):
+    person: Optional[str]
+    company: Optional[str]
+
+
+def parse_and_validate(text: str) -> Extracted:
+    data = json.loads(text)
+    return Extracted.model_validate(data)
+
+
+def save_failure(raw: str):
+    output_dir = Path("output")
+    output_dir.mkdir(exist_ok=True)
+
+    path = output_dir / "raw_failure.txt"
+    path.write_text(raw)
+
+    return path
+
+
+def extract_with_repair(text, call_llm, max_retries=2):
+    prompt = (
+        "Return ONLY valid JSON.\n"
+        "Keys: person, company.\n"
+        "Use null if unknown.\n\n"
+        f"{text}"
+    )
+
+    last_error = None
+
+    for _ in range(max_retries + 1):
+        raw = call_llm(prompt)
+
+        try:
+            return parse_and_validate(raw)
+
+        except (json.JSONDecodeError, ValidationError) as e:
+            save_failure(raw)
+
+            last_error = str(e)
+
+            prompt = (
+                "Your previous output was invalid.\n"
+                "Fix it and return ONLY valid JSON.\n\n"
+                f"Invalid output:\n{raw}\n\n"
+                f"Error:\n{last_error}"
+            )
+
+    raise ValueError(
+        f"Failed after retries. Last error: {last_error}"
+    )
+
+
+
+Why use Pydantic?
+Schema enforcement
+Type validation
+Clear error messages
+
+Why separate parsing and validation?
+
+Because:
+
+JSON error  ≠ Schema error
+
+They indicate different problems.
+
+Why save raw failures?
+
+To inspect what the model actually returned.
+
+Why cap retries?
+
+Avoid:
+
+Infinite loops
+Extra cost
+Increased latency
+What is the production pattern?
+LLM
+ ↓
+Parse JSON
+ ↓
+Validate Schema
+ ↓
+Retry/Repair (limited)
+ ↓
+Return structured object
+
+The 10 Lines You Should Memorize
+
+import json
+from pydantic import BaseModel
+
+class Extracted(BaseModel):
+    person: str | None = None
+    company: str | None = None
+
+data = json.loads(model_output)
+result = Extracted.model_validate(data)
+
+This is the foundation of structured LLM outputs in production systems.
